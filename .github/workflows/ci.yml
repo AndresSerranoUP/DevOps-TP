@@ -32,6 +32,9 @@ jobs:
         run: npm run typecheck
 
       - name: Run tests and coverage
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ENCRYPTER_KEY: ${{ secrets.ENCRYPTER_KEY }}
         run: npm run coverage
 
       - name: Upload coverage artifact
