@@ -3,10 +3,13 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { KeyNormalizePipe } from './common/http/key-normalize.pipe';
 import { StoreExceptionFilter } from './common/http/store-exception.filter';
+import { StructuredLoggerInterceptor } from './common/logging/structured-logger.interceptor';
 
 export function configureApp(app: INestApplication): INestApplication {
   app.use(helmet({ contentSecurityPolicy: false }));
   app.enableCors({ origin: '*' });
+
+  app.useGlobalInterceptors(new StructuredLoggerInterceptor());
 
   app.useGlobalPipes(
     new KeyNormalizePipe(),
