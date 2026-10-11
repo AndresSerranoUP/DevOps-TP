@@ -1,4 +1,5 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { AppController } from './app.controller';
 import { AppConfigModule } from './config/config.module';
 import { StoreModule } from './store/store.module';
 import { MailModule } from './mail/mail.module';
@@ -32,6 +33,7 @@ import { OptionalAuthMiddleware } from './auth/optional-auth.middleware';
     UserGamesModule,
     HealthModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
