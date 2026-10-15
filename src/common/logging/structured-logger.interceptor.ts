@@ -13,6 +13,7 @@ import type { Request, Response } from 'express';
 export type LogLevel = 'info' | 'warn' | 'error';
 
 export interface StructuredHttpLog {
+  log_type: 'structuredJsonMessage';
   timestamp: string;
   level: LogLevel;
   method: string;
@@ -57,7 +58,12 @@ export class StructuredLoggerInterceptor implements NestInterceptor {
             : res?.statusCode || 200);
       const level = this.resolveLevel(statusCode);
 
+      if (!this.shouldLog(level)) {
+        return;
+      }
+
       const logPayload: StructuredHttpLog = {
+        log_type: 'structuredJsonMessage',
         timestamp: new Date().toISOString(),
         level,
         method: req?.method || 'UNKNOWN',
@@ -123,6 +129,28 @@ export class StructuredLoggerInterceptor implements NestInterceptor {
       return 'warn';
     }
     return 'info';
+  }
+
+  private getEffectiveLogLevel(): LogLevel {
+    const envLevel = process.env.LOG_LEVEL?.toLowerCase().trim();
+    if (envLevel === 'info' || envLevel === 'warn' || envLevel === 'error') {
+      return envLevel;
+    }
+    return process.env.NODE_ENV === 'production' ? 'warn' : 'info';
+  }
+
+  private shouldLog(eventLevel: LogLevel): boolean {
+    const configuredLevel = this.getEffectiveLogLevel();
+    if (configuredLevel === 'warn' && eventLevel === 'info') {
+      return false;
+    }
+    if (
+      configuredLevel === 'error' &&
+      (eventLevel === 'info' || eventLevel === 'warn')
+    ) {
+      return false;
+    }
+    return true;
   }
 
   private extractStatusCode(err: unknown): number {

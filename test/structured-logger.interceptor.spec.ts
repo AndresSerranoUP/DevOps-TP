@@ -9,6 +9,7 @@ describe('StructuredLoggerInterceptor', () => {
   let logSpy: jest.SpyInstance;
   let warnSpy: jest.SpyInstance;
   let errorSpy: jest.SpyInstance;
+  const originalEnv = { ...process.env };
 
   beforeEach(() => {
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -18,6 +19,7 @@ describe('StructuredLoggerInterceptor', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    process.env = { ...originalEnv };
   });
 
   function createMockContext(options: {
@@ -108,6 +110,8 @@ describe('StructuredLoggerInterceptor', () => {
       const rawJson = logSpy.mock.calls[0][0];
       const parsedLog: StructuredHttpLog = JSON.parse(rawJson);
 
+      expect(parsedLog.log_type).toBe('structuredJsonMessage');
+      expect(Object.keys(parsedLog)[0]).toBe('log_type');
       expect(parsedLog.level).toBe('info');
       expect(parsedLog.method).toBe('GET');
       expect(parsedLog.path).toBe('/games?page=1');
@@ -139,6 +143,7 @@ describe('StructuredLoggerInterceptor', () => {
       expect(warnSpy).toHaveBeenCalledTimes(1);
       const rawJson = warnSpy.mock.calls[0][0];
       const parsedLog: StructuredHttpLog = JSON.parse(rawJson);
+      expect(parsedLog.log_type).toBe('structuredJsonMessage');
       expect(parsedLog.level).toBe('warn');
       expect(parsedLog.status_code).toBe(404);
       expect(parsedLog.path).toBe('/unknown-route');
@@ -167,6 +172,7 @@ describe('StructuredLoggerInterceptor', () => {
       expect(errorSpy).toHaveBeenCalledTimes(1);
       const rawJson = errorSpy.mock.calls[0][0];
       const parsedLog: StructuredHttpLog = JSON.parse(rawJson);
+      expect(parsedLog.log_type).toBe('structuredJsonMessage');
       expect(parsedLog.level).toBe('error');
       expect(parsedLog.status_code).toBe(500);
       expect(parsedLog.method).toBe('DELETE');
@@ -191,6 +197,7 @@ describe('StructuredLoggerInterceptor', () => {
 
       expect(customWriter).toHaveBeenCalledTimes(1);
       const [payload, rawJson] = customWriter.mock.calls[0];
+      expect(payload.log_type).toBe('structuredJsonMessage');
       expect(payload.status_code).toBe(201);
       expect(payload.level).toBe('info');
       expect(payload.message).toBeUndefined();
@@ -213,6 +220,8 @@ describe('StructuredLoggerInterceptor', () => {
     const interceptor = new StructuredLoggerInterceptor();
     interceptor.intercept(context, callHandler).subscribe(() => {
       expect(logSpy).toHaveBeenCalledTimes(1);
+      const parsed = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(parsed.log_type).toBe('structuredJsonMessage');
       done();
     });
   });
@@ -231,6 +240,7 @@ describe('StructuredLoggerInterceptor', () => {
       listeners['close']();
       expect(warnSpy).toHaveBeenCalledTimes(1);
       const parsed = JSON.parse(warnSpy.mock.calls[0][0]);
+      expect(parsed.log_type).toBe('structuredJsonMessage');
       expect(parsed.level).toBe('warn');
       expect(parsed.status_code).toBe(499);
       expect(parsed.message).toBe('HTTP 499');
@@ -249,6 +259,8 @@ describe('StructuredLoggerInterceptor', () => {
       listeners['finish']();
       listeners['close']();
       expect(logSpy).toHaveBeenCalledTimes(1);
+      const parsed = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(parsed.log_type).toBe('structuredJsonMessage');
       done();
     });
   });
@@ -268,6 +280,7 @@ describe('StructuredLoggerInterceptor', () => {
     interceptor.intercept(context, callHandler).subscribe(() => {
       expect(logSpy).toHaveBeenCalledTimes(1);
       const parsed = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(parsed.log_type).toBe('structuredJsonMessage');
       expect(parsed.path).toBe('/fallback-url');
       expect(parsed.message).toBeUndefined();
       done();
@@ -289,6 +302,7 @@ describe('StructuredLoggerInterceptor', () => {
         expect(err).toBeInstanceOf(HttpException);
         expect(warnSpy).toHaveBeenCalledTimes(1);
         const parsed = JSON.parse(warnSpy.mock.calls[0][0]);
+        expect(parsed.log_type).toBe('structuredJsonMessage');
         expect(parsed.status_code).toBe(404);
         expect(parsed.level).toBe('warn');
         expect(parsed.message).toBe('Not Found');
@@ -312,6 +326,7 @@ describe('StructuredLoggerInterceptor', () => {
       error: () => {
         expect(warnSpy).toHaveBeenCalledTimes(1);
         const parsed = JSON.parse(warnSpy.mock.calls[0][0]);
+        expect(parsed.log_type).toBe('structuredJsonMessage');
         expect(parsed.status_code).toBe(403);
         expect(parsed.message).toBe('Forbidden');
         expect((parsed as any).stack).toBeUndefined();
@@ -334,6 +349,7 @@ describe('StructuredLoggerInterceptor', () => {
       error: () => {
         expect(errorSpy).toHaveBeenCalledTimes(1);
         const parsed = JSON.parse(errorSpy.mock.calls[0][0]);
+        expect(parsed.log_type).toBe('structuredJsonMessage');
         expect(parsed.status_code).toBe(502);
         expect(parsed.level).toBe('error');
         expect(parsed.message).toBe('Bad Gateway');
@@ -356,6 +372,7 @@ describe('StructuredLoggerInterceptor', () => {
       error: () => {
         expect(errorSpy).toHaveBeenCalledTimes(1);
         const parsed = JSON.parse(errorSpy.mock.calls[0][0]);
+        expect(parsed.log_type).toBe('structuredJsonMessage');
         expect(parsed.status_code).toBe(500);
         expect(parsed.level).toBe('error');
         expect(parsed.message).toBe('Unknown crash');
@@ -383,6 +400,7 @@ describe('StructuredLoggerInterceptor', () => {
     interceptor.intercept(context, callHandler).subscribe(() => {
       expect(logSpy).toHaveBeenCalledTimes(1);
       const parsed = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(parsed.log_type).toBe('structuredJsonMessage');
       expect(parsed.method).toBe('UNKNOWN');
       expect(parsed.path).toBe('/');
       expect(parsed.status_code).toBe(200);
@@ -412,6 +430,7 @@ describe('StructuredLoggerInterceptor', () => {
         const rawJson = errorSpy.mock.calls[0][0];
         const parsedLog: StructuredHttpLog = JSON.parse(rawJson);
 
+        expect(parsedLog.log_type).toBe('structuredJsonMessage');
         expect(parsedLog.level).toBe('error');
         expect(parsedLog.status_code).toBe(500);
         expect(parsedLog.method).toBe('GET');
@@ -449,6 +468,7 @@ describe('StructuredLoggerInterceptor', () => {
         const rawJson = warnSpy.mock.calls[0][0];
         const parsedLog: StructuredHttpLog = JSON.parse(rawJson);
 
+        expect(parsedLog.log_type).toBe('structuredJsonMessage');
         expect(parsedLog.level).toBe('warn');
         expect(parsedLog.status_code).toBe(400);
         expect(parsedLog.message).toBe('email is required, password must be at least 8 chars');
@@ -476,10 +496,135 @@ describe('StructuredLoggerInterceptor', () => {
 
       expect(warnSpy).toHaveBeenCalledTimes(1);
       const parsedLog: StructuredHttpLog = JSON.parse(warnSpy.mock.calls[0][0]);
+      expect(parsedLog.log_type).toBe('structuredJsonMessage');
       expect(parsedLog.level).toBe('warn');
       expect(parsedLog.status_code).toBe(403);
       expect(parsedLog.message).toBe('Forbidden Access');
       done();
+    });
+  });
+
+  describe('LOG_LEVEL filtering', () => {
+    it('omits info logs but emits warn and error logs when LOG_LEVEL is "warn"', (done) => {
+      process.env.LOG_LEVEL = 'warn';
+
+      const customWriter = jest.fn();
+      const interceptor = new StructuredLoggerInterceptor(customWriter);
+
+      // Info level request (200)
+      const infoCtx = createMockContext({ statusCode: 200 });
+      interceptor.intercept(infoCtx.context, { handle: () => of('ok') }).subscribe(() => {
+        infoCtx.listeners['finish']();
+        expect(customWriter).not.toHaveBeenCalled();
+        expect(logSpy).not.toHaveBeenCalled();
+
+        // Warn level request (404)
+        const warnCtx = createMockContext({ statusCode: 404 });
+        interceptor.intercept(warnCtx.context, { handle: () => of(null) }).subscribe(() => {
+          warnCtx.listeners['finish']();
+          expect(customWriter).toHaveBeenCalledTimes(1);
+          expect(customWriter.mock.calls[0][0].log_type).toBe('structuredJsonMessage');
+          expect(customWriter.mock.calls[0][0].level).toBe('warn');
+
+          // Error level request (500)
+          const errorCtx = createMockContext({ statusCode: 500 });
+          interceptor.intercept(errorCtx.context, { handle: () => of(null) }).subscribe(() => {
+            errorCtx.listeners['finish']();
+            expect(customWriter).toHaveBeenCalledTimes(2);
+            expect(customWriter.mock.calls[1][0].log_type).toBe('structuredJsonMessage');
+            expect(customWriter.mock.calls[1][0].level).toBe('error');
+            done();
+          });
+        });
+      });
+    });
+
+    it('omits info and warn logs but emits error logs when LOG_LEVEL is "error"', (done) => {
+      process.env.LOG_LEVEL = 'error';
+
+      const customWriter = jest.fn();
+      const interceptor = new StructuredLoggerInterceptor(customWriter);
+
+      // Info request (200)
+      const infoCtx = createMockContext({ statusCode: 200 });
+      interceptor.intercept(infoCtx.context, { handle: () => of('ok') }).subscribe(() => {
+        infoCtx.listeners['finish']();
+        expect(customWriter).not.toHaveBeenCalled();
+
+        // Warn request (400)
+        const warnCtx = createMockContext({ statusCode: 400 });
+        interceptor.intercept(warnCtx.context, { handle: () => of(null) }).subscribe(() => {
+          warnCtx.listeners['finish']();
+          expect(customWriter).not.toHaveBeenCalled();
+
+          // Error request (500)
+          const errorCtx = createMockContext({ statusCode: 500 });
+          interceptor.intercept(errorCtx.context, { handle: () => of(null) }).subscribe(() => {
+            errorCtx.listeners['finish']();
+            expect(customWriter).toHaveBeenCalledTimes(1);
+            expect(customWriter.mock.calls[0][0].log_type).toBe('structuredJsonMessage');
+            expect(customWriter.mock.calls[0][0].level).toBe('error');
+            done();
+          });
+        });
+      });
+    });
+
+    it('emits info, warn, and error logs when LOG_LEVEL is "info"', (done) => {
+      process.env.LOG_LEVEL = 'info';
+
+      const customWriter = jest.fn();
+      const interceptor = new StructuredLoggerInterceptor(customWriter);
+
+      const infoCtx = createMockContext({ statusCode: 200 });
+      interceptor.intercept(infoCtx.context, { handle: () => of('ok') }).subscribe(() => {
+        infoCtx.listeners['finish']();
+        expect(customWriter).toHaveBeenCalledTimes(1);
+        expect(customWriter.mock.calls[0][0].log_type).toBe('structuredJsonMessage');
+        expect(customWriter.mock.calls[0][0].level).toBe('info');
+        done();
+      });
+    });
+
+    it('defaults to "warn" in production when LOG_LEVEL is not set', (done) => {
+      delete process.env.LOG_LEVEL;
+      process.env.NODE_ENV = 'production';
+
+      const customWriter = jest.fn();
+      const interceptor = new StructuredLoggerInterceptor(customWriter);
+
+      const infoCtx = createMockContext({ statusCode: 200 });
+      interceptor.intercept(infoCtx.context, { handle: () => of('ok') }).subscribe(() => {
+        infoCtx.listeners['finish']();
+        // Info should be skipped in production default (warn)
+        expect(customWriter).not.toHaveBeenCalled();
+
+        const errCtx = createMockContext({ statusCode: 500 });
+        interceptor.intercept(errCtx.context, { handle: () => of(null) }).subscribe(() => {
+          errCtx.listeners['finish']();
+          expect(customWriter).toHaveBeenCalledTimes(1);
+          expect(customWriter.mock.calls[0][0].log_type).toBe('structuredJsonMessage');
+          expect(customWriter.mock.calls[0][0].level).toBe('error');
+          done();
+        });
+      });
+    });
+
+    it('defaults to "info" in other environments when LOG_LEVEL is not set', (done) => {
+      delete process.env.LOG_LEVEL;
+      process.env.NODE_ENV = 'development';
+
+      const customWriter = jest.fn();
+      const interceptor = new StructuredLoggerInterceptor(customWriter);
+
+      const infoCtx = createMockContext({ statusCode: 200 });
+      interceptor.intercept(infoCtx.context, { handle: () => of('ok') }).subscribe(() => {
+        infoCtx.listeners['finish']();
+        expect(customWriter).toHaveBeenCalledTimes(1);
+        expect(customWriter.mock.calls[0][0].log_type).toBe('structuredJsonMessage');
+        expect(customWriter.mock.calls[0][0].level).toBe('info');
+        done();
+      });
     });
   });
 });
