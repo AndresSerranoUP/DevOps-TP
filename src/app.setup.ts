@@ -2,7 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { KeyNormalizePipe } from './common/http/key-normalize.pipe';
-import { StoreExceptionFilter } from './common/http/store-exception.filter';
+import { AllExceptionsFilter } from './common/http/all-exceptions.filter';
 import { StructuredLoggerInterceptor } from './common/logging/structured-logger.interceptor';
 
 export function configureApp(app: INestApplication): INestApplication {
@@ -20,7 +20,7 @@ export function configureApp(app: INestApplication): INestApplication {
     }),
   );
 
-  app.useGlobalFilters(new StoreExceptionFilter());
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   const config = new DocumentBuilder()
     .setTitle('GamingTrends API')

@@ -6,12 +6,13 @@ import { KeyNormalizePipe } from '../src/common/http/key-normalize.pipe';
 import { ParseIdPipe } from '../src/common/http/parse-id.pipe';
 import { PlainText, HtmlContent } from '../src/common/http/plain-text.decorator';
 import { StoreExceptionFilter } from '../src/common/http/store-exception.filter';
+import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { DuplicateKeyError, ForeignKeyError, UnknownTableOrColumnError } from '../src/store/data-store';
 import { PageQueryDto } from '../src/common/pagination/page-query.dto';
 import { PageResult } from '../src/common/pagination/page-result';
 import { paginate } from '../src/common/pagination/paginate';
 import { UrlBuilder } from '../src/common/pagination/url-builder';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { Response } from 'express';
 
 describe('Common module unit tests', () => {
@@ -158,8 +159,19 @@ describe('Common module unit tests', () => {
     });
   });
 
-  describe('StoreExceptionFilter', () => {
-    const filter = new StoreExceptionFilter();
+  describe('AllExceptionsFilter & StoreExceptionFilter', () => {
+    const filter = new AllExceptionsFilter();
+    let errorSpy: jest.SpyInstance;
+    const originalEnv = { ...process.env };
+
+    beforeEach(() => {
+      errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      errorSpy.mockRestore();
+      process.env = { ...originalEnv };
+    });
 
     function mockHost() {
       const json = jest.fn();
@@ -206,13 +218,105 @@ describe('Common module unit tests', () => {
       }));
     });
 
-    it('maps generic error to 500 Internal Server Error', () => {
+    it('preserves status and response for HttpException with object response', () => {
+      const { host, status, json } = mockHost();
+      const httpException = new HttpException(
+        { statusCode: 404, message: 'Game not found', error: 'Not Found' },
+        HttpStatus.NOT_FOUND,
+      );
+      filter.catch(httpException, host);
+      expect(status).toHaveBeenCalledWith(404);
+      expect(json).toHaveBeenCalledWith({
+        statusCode: 404,
+        message: 'Game not found',
+        error: 'Not Found',
+      });
+    });
+
+    it('preserves status and wraps response for HttpException with string response', () => {
+      const { host, status, json } = mockHost();
+      const httpException = new HttpException('Forbidden resource', HttpStatus.FORBIDDEN);
+      filter.catch(httpException, host);
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json).toHaveBeenCalledWith({
+        statusCode: 403,
+        message: 'Forbidden resource',
+      });
+    });
+
+    it('maps generic unhandled error to 500 Internal Server Error', () => {
       const { host, status, json } = mockHost();
       filter.catch(new Error('Unexpected crash'), host);
       expect(status).toHaveBeenCalledWith(500);
-      expect(json).toHaveBeenCalledWith(expect.objectContaining({
+      expect(json).toHaveBeenCalledWith({
         statusCode: 500,
         message: 'Unexpected crash',
+      });
+    });
+
+    it('maps non-Error exception object to 500 with extracted message or fallback', () => {
+      const { host, status, json } = mockHost();
+      filter.catch({ message: 'Custom failure object' }, host);
+      expect(status).toHaveBeenCalledWith(500);
+      expect(json).toHaveBeenCalledWith({
+        statusCode: 500,
+        message: 'Custom failure object',
+      });
+
+      const { host: host2, status: status2, json: json2 } = mockHost();
+      filter.catch('string error', host2);
+      expect(status2).toHaveBeenCalledWith(500);
+      expect(json2).toHaveBeenCalledWith({
+        statusCode: 500,
+        message: 'Internal server error',
+      });
+    });
+
+    it('prints full trace with console.error when DEBUG is "true"', () => {
+      process.env.DEBUG = 'true';
+      process.env.NODE_ENV = 'production';
+
+      const { host } = mockHost();
+      const err = new Error('Debug error');
+      filter.catch(err, host);
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith(err);
+    });
+
+    it('prints full trace with console.error when NODE_ENV is "development"', () => {
+      process.env.DEBUG = 'false';
+      process.env.NODE_ENV = 'development';
+
+      const { host } = mockHost();
+      const err = new Error('Dev error');
+      filter.catch(err, host);
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith(err);
+    });
+
+    it('suppresses console.error when in production and DEBUG is false or undefined', () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.DEBUG;
+
+      const { host } = mockHost();
+      filter.catch(new Error('Production silent crash'), host);
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      process.env.DEBUG = 'false';
+      filter.catch(new Error('Production silent crash 2'), host);
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('StoreExceptionFilter alias instantiates and behaves identically', () => {
+      const legacyFilter = new StoreExceptionFilter();
+      const { host, status, json } = mockHost();
+      legacyFilter.catch(new DuplicateKeyError('Duplicate entry'), host);
+      expect(status).toHaveBeenCalledWith(409);
+      expect(json).toHaveBeenCalledWith(expect.objectContaining({
+        statusCode: 409,
+        message: 'Duplicate entry',
       }));
     });
   });

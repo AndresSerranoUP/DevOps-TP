@@ -7,6 +7,7 @@ import { AppConfig } from './app-config';
   imports: [
     NestConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['.env_local', '.env'], // Recomendado: prioriza .env_local sobre .env
     }),
   ],
   providers: [AppConfig],
