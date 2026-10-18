@@ -16,6 +16,8 @@ describe('AppConfig & AppConfigModule', () => {
           FRONTEND_URL: 'http://frontend.com',
           PUBLIC_API_URL: 'http://api.com',
           DB_SERVER: 'sql.server',
+          DB_TYPE: 'sqlite',
+          SQLITE_DB_PATH: 'custom/db.sqlite3',
           DB_PORT: '1433',
           DB_DATABASE: 'mydb',
           DB_USER: 'sa',
@@ -38,6 +40,8 @@ describe('AppConfig & AppConfigModule', () => {
     expect(result.publicApiUrl).toBe('http://api.com');
     expect(result.port).toBe(3010);
     expect(result.dbServer).toBe('sql.server');
+    expect(result.dbType).toBe('sqlite');
+    expect(result.sqliteDbPath).toBe('custom/db.sqlite3');
     expect(result.dbPort).toBe(1433);
     expect(result.dbDatabase).toBe('mydb');
     expect(result.dbUser).toBe('sa');
@@ -65,6 +69,8 @@ describe('AppConfig & AppConfigModule', () => {
     expect(result.frontendUrl).toBe('http://localhost:3000');
     expect(result.publicApiUrl).toBe('http://localhost:3000/api');
     expect(result.dbPort).toBe(1433);
+    expect(result.dbType).toBe('sqlite');
+    expect(result.sqliteDbPath).toBe('data/database.sqlite3');
     expect(result.dbEncrypt).toBe(true);
     expect(result.dbTrustServerCertificate).toBe(false);
   });
