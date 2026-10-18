@@ -249,7 +249,7 @@ describe('InMemoryDataStore & Store module unit tests', () => {
   describe('StoreModule', () => {
     it('StoreModule is defined', () => {
       expect(StoreModule).toBeDefined();
-      const module = new StoreModule();
+      const module = new StoreModule({} as any, {} as any);
       expect(module).toBeInstanceOf(StoreModule);
     });
   });
