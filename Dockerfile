@@ -37,6 +37,7 @@ FROM node:24-alpine AS prod-deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN mkdir /app/logs
 
 # ==============================================================================
 # Etapa 5: runtime - Entorno de ejecución de producción
@@ -48,9 +49,11 @@ ENV NODE_ENV=production \
     PORT=3000
 
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=node:node /app/logs ./logs
 COPY --from=build --chown=node:node /app/data ./data
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/package*.json ./
+
 
 USER node
 
