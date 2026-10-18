@@ -54,6 +54,14 @@ export class AppConfig {
     return this.config.get<string>('PUBLIC_API_URL', 'http://localhost:3000/api');
   }
 
+  get dbType(): string {
+    return (this.config.get<string>('DB_TYPE', 'sqlite') || 'sqlite').toLowerCase();
+  }
+
+  get sqliteDbPath(): string {
+    return this.config.get<string>('SQLITE_DB_PATH', 'data/database.sqlite3') || 'data/database.sqlite3';
+  }
+
   get dbServer(): string | undefined {
     return this.config.get<string>('DB_SERVER');
   }

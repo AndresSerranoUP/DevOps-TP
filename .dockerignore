@@ -5,7 +5,7 @@ test
 .git
 .github
 .env
-.env.*
+.env*
 !.env.example
 *.log
 *.md

@@ -1,0 +1,24 @@
+services:
+  api:
+    working_dir: /app
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    environment:
+      - PORT=3000
+      - DB_TYPE=sqlite
+      - SQLITE_DB_PATH=data/database.sqlite3
+      - JWT_SECRET=random_jwt_secret_key_value
+      - ENCRYPTER_KEY=random_encryption_key_value
+      - JWT_ISSUER=https://localhost:7100
+      - JWT_SUBJECT=MySub
+      - JWT_EXPIRATION_MINUTES=60
+    network_mode: bridge
+    ports:
+      - 3000:3000
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run start:dev
