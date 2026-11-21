@@ -89,65 +89,71 @@ En `StoreModule`, la aplicación implementa el hook del ciclo de vida `OnModuleI
 
 ## 2. Pipeline de CI/CD y Diagrama de Flujo
 
-El flujo de entrega continua está automatizado mediante GitHub Actions en `.github/workflows/ci.yml`.
+El flujo CI / CD está automatizado mediante GitHub Actions bajo una arquitectura modular basada en **Reusable Workflows (`on: workflow_call`)** dentro de `.github/workflows/`:
+
+- `ci.yml`: Compuerta de calidad (*Quality Gate*) ejecutable de forma independiente en ramas/PRs y reutilizable por CD.
+- `cd.yml`: Orquestador principal de liberación y despliegue en `main`.
+- `cd-semver.yml`: Módulo de cálculo automático de versiones SemVer, publicación de tags Git (`vX.Y.Z`) y creación automática de GitHub Release con su changelog.
+- `cd-docker.yml`: Módulo de compilación multi-etapa y publicación de imágenes en Docker Hub (`:X.Y.Z` y `:latest`).
+- `cd-render.yml`: Módulo de despliegue continuo hacia Render apuntando exactamente al tag SemVer publicado.
 
 ### Diagrama del Flujo de Trabajo
 
 ```mermaid
 flowchart TD
-    Trigger["Git Push / workflow_dispatch"] --> Concurrency["Control de Concurrencia (cancel-in-progress: true)"]
-    Concurrency --> JobQuality["1. Job: Quality (Ubuntu Latest, Node 24)"]
-    
-    subgraph QualityGate ["Quality Gate & Pruebas"]
-        JobQuality --> StepLint["npm run lint (ESLint 9)"]
-        StepLint --> StepType["npm run typecheck (TSC 5.9)"]
-        StepType --> StepCov["npm run coverage (Jest & ts-jest)"]
-        StepCov --> StepArtifact["Subida de Artefacto (coverage-report, retención 7 días)"]
+    CITrigger["Eventos CI: pull_request en 'main' / push (branches-ignore: 'main', paths-ignore: '**.md', 'assets/**') / workflow_dispatch"] --> CIConc["ci.yml (concurrency: ci-ref, cancel-in-progress: true)"]
+
+    subgraph CIModule ["Módulo CI (.github/workflows/ci.yml - también reusable via workflow_call)"]
+        CIConc --> CIEnv["Job quality (Ubuntu Latest, Node.js 24, cache npm) + npm ci"]
+        CIEnv --> CILint["npm run lint (ESLint 9)"]
+        CILint --> CIType["npm run typecheck (TSC 5.9)"]
+        CIType --> CICov["npm run coverage (Jest & ts-jest)"]
+        CICov --> CIArtifact["Upload artifact: coverage-report (retención 7 días)"]
     end
-    
-    StepArtifact --> BranchEval{"Rama == 'main'?"}
-    BranchEval -->|"No (Rama de característica)"| FinishPR["Fin del Pipeline (Validación Exitosa)"]
-    
-    BranchEval -->|"Sí (Rama principal)"| JobDocker["2. Job: Docker Build & Push"]
-    
-    subgraph DockerPublish ["Publicación de Imagen"]
-        JobDocker --> DockerLogin["Login en Docker Hub"]
-        DockerLogin --> DockerBuild["Buildx: Compilación de Imagen Multi-Stage"]
-        DockerBuild --> DockerPush["Push: user/aserra14-service:GITHUB_SHA"]
+
+    CDTrigger["Eventos CD: push en 'main' (paths-ignore: '**.md', 'assets/**') / workflow_dispatch"] --> CDConc["cd.yml Orquestador (concurrency: cd-ref, cancel-in-progress: true, permissions: contents: write)"]
+
+    subgraph CDOrchestrator ["Pipeline Modular CD (.github/workflows/cd.yml)"]
+        CDConc --> JobQuality["1. Quality Gate: reutiliza ci.yml (workflow_call, secrets: inherit)"]
+        JobQuality --> MainCheck{"github.ref == 'refs/heads/main'?"}
+        MainCheck -->|"No"| StopCD["Fin del flujo CD (sin tag ni despliegue)"]
+        MainCheck -->|"Sí"| JobSemver["2. Semantic Versioning: cd-semver.yml (fetch-depth: 0, github-tag-action@v7, tag vX.Y.Z + GitHub Release via release-action@v1)"]
+        JobSemver -->|"outputs: version (X.Y.Z), tag (vX.Y.Z)"| JobDocker["3. Docker Build & Push: cd-docker.yml (Docker Hub :X.Y.Z y :latest)"]
+        JobSemver -->|"needs.semver.outputs.version (image_tag)"| JobRender["4. Deploy to Render: cd-render.yml (needs: semver y docker, curl --fail-with-body)"]
+        JobDocker --> JobRender
     end
-    
-    DockerPush --> JobRender["3. Job: Deploy to Render"]
-    
-    subgraph CloudDeploy ["Despliegue Continuo"]
-        JobRender --> TriggerHook["Invocación de Deploy Hook con URL de Imagen"]
-        TriggerHook --> RenderPull["Render descarga la nueva imagen desde Docker Hub"]
-        RenderPull --> HealthVerification["Reinicio y Healthcheck Activo"]
-    end
-    
-    HealthVerification --> ProductionOk["Servicio en Producción Actualizado"]
+
+    JobRender --> ProdOk["Servicio en Render actualizado con tag SemVer exacto"]
 ```
 
 ### Explicación de Etapas y Compuertas de Calidad
 
-1. **Control de Concurrencia**:
-   Se define `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }`. Si se realiza un nuevo *push* sobre la misma rama mientras una ejecución previa se encuentra en curso, la anterior es cancelada automáticamente para ahorrar minutos de cómputo y evitar condiciones de carrera.
-2. **Etapa 1: Quality (Compuerta Obligatoria)**:
-   - Se ejecuta en todas las ramas ante cualquier evento `push` o ejecución manual (`workflow_dispatch`).
-   - Configura el entorno oficial Node.js 24 con caché de dependencias de `npm`.
-   - Realiza instalación reproducible con `npm ci`.
-   - Ejecuta análisis estático con `npm run lint`.
-   - Valida la coherencia estricta de tipos con `npm run typecheck`.
-   - Corre la totalidad de los 198 tests unitarios y de integración con cálculo de métricas en `npm run coverage`.
-   - Almacena el directorio `coverage/` como artefacto descargable durante 7 días (`actions/upload-artifact@v7`).
-3. **Etapa 2: Docker Build & Push**:
-   - Condicionado a ejecutarse **únicamente en la rama `main`** y supeditado al éxito absoluto de la etapa previa (`needs: quality`).
-   - Autentica contra Docker Hub con secretos seguros (`DOCKER_USER`, `DOCKER_PASS`).
-   - Construye la imagen multi-etapa utilizando Docker Buildx.
-   - Publica la imagen inmutable etiquetada con el hash del commit: `${DOCKER_USER}/aserra14-service:${GITHUB_SHA}`.
-4. **Etapa 3: Deploy to Render**:
-   - Condicionado a ejecutarse tras la publicación exitosa del contenedor (`needs: docker`).
-   - Realiza una petición segura vía `curl` al *Deploy Hook* de Render, inyectando como parámetro la URI exacta de la imagen publicada en Docker Hub (`imgURL=docker.io/...`).
-   - Render descarga el contenedor, verifica las sondas de salud y promueve la nueva versión con cero tiempo de inactividad (*zero-downtime deployment*).
+1. **Arquitectura Modular y Reutilización (`workflow_call` + `secrets: inherit`)**:
+   - Se separa estrictamente la **Integración Continua (`ci.yml`)** de la **Entrega Continua (`cd.yml`)**.
+   - El orquestador `cd.yml` invoca los módulos `ci.yml`, `cd-semver.yml`, `cd-docker.yml` y `cd-render.yml` mediante `workflow_call`, propagando los secretos requeridos con `secrets: inherit` y pasando `needs.semver.outputs.version` directamente como `image_tag` a `cd-docker.yml` y `cd-render.yml`.
+2. **Permisos (`permissions`) y Filtros de Rutas (`paths-ignore`)**:
+   - `cd.yml` y el job `semver` de `cd-semver.yml` configuran `permissions: contents: write` para crear y publicar el tag Git `vX.Y.Z` y el correspondiente GitHub Release.
+   - `ci.yml` (`pull_request` y `push`) y `cd.yml` (`push`) configuran `paths-ignore: ['**.md', 'assets/**']` para omitir ejecuciones automáticas cuando los *commits* solo modifican archivos Markdown o recursos bajo `assets/`.
+3. **Grupos de Concurrencia (`concurrency`)**:
+   - **CI (`ci-${{ github.ref }}`)**: Configurado con `cancel-in-progress: true` para cancelar ejecuciones obsoletas ante nuevos *commits* en la misma rama o *Pull Request*.
+   - **CD (`cd-${{ github.ref }}`)**: Configurado con `cancel-in-progress: true` para cancelar ejecuciones previas en curso sobre la misma referencia.
+4. **Etapa 1: Quality Gate (`ci.yml`)**:
+   - Se dispara ante `pull_request` hacia `main`, `push` en cualquier rama distinta de `main` (`branches-ignore: [main]`), ejecución manual (`workflow_dispatch`) o como primera compuerta invocada por `cd.yml`.
+   - Configura **Node.js 24** (`actions/setup-node@v7`) con caché de `npm`, instala dependencias (`npm ci`), ejecuta `npm run lint`, valida tipado estricto con `npm run typecheck`, corre la suite de pruebas con `npm run coverage` (inyectando `JWT_SECRET` y `ENCRYPTER_KEY`) y publica el directorio `coverage/` como artefacto `coverage-report` con retención de 7 días (`actions/upload-artifact@v7`).
+5. **Etapa 2: Semantic Versioning (`cd-semver.yml`)**:
+   - Se ejecuta únicamente tras aprobar `quality` y cuando `github.ref == 'refs/heads/main'`.
+   - Realiza *checkout* con historial completo (`fetch-depth: 0`) mediante `actions/checkout@v7` y calcula/publica automáticamente la versión siguiendo **Conventional Commits** con `mathieudutour/github-tag-action@v7` (`default_bump: patch`, `tag_prefix: v`, `initial_version: "1.0.0"`, `release_branches: main`):
+     - `fix:` -> incremento **patch** (también aplicado como `default_bump: patch` si no hay prefijo convencional).
+     - `feat:` -> incremento **minor**.
+     - `BREAKING CHANGE` (o `!:` en el encabezado del commit) -> incremento **major**.
+   - Cuando se genera un nuevo tag (`steps.tag_version.outputs.new_tag != ''`), crea automáticamente un **GitHub Release** con el changelog generado mediante `ncipollo/release-action@v1`.
+   - Expone los *outputs* `version` (`new_version || previous_version`) y `tag` (`new_tag || previous_tag`).
+6. **Etapa 3: Docker Build & Push (`cd-docker.yml`)**:
+   - Recibe `image_tag: ${{ needs.semver.outputs.version }}` (`needs: semver`).
+   - Ejecuta `actions/checkout@v7`, se autentica en Docker Hub (`docker/login-action@v4`) con `DOCKER_USER` y `DOCKER_PASS`, extrae etiquetas OCI (`docker/metadata-action@v6`) y construye/publica la imagen con `docker/build-push-action@v7` bajo dos tags: `${{ secrets.DOCKER_USER }}/aserra14-service:${{ inputs.image_tag }}` y `${{ secrets.DOCKER_USER }}/aserra14-service:latest`.
+7. **Etapa 4: Deploy to Render (`cd-render.yml`)**:
+   - Se ejecuta tras completarse `semver` y `docker` (`needs: [semver, docker]`), recibiendo `image_tag: ${{ needs.semver.outputs.version }}`.
+   - Invoca el *Deploy Hook* de Render mediante `curl --fail-with-body "$deploy_url"` enviando `imgURL=docker.io%2F${{ secrets.DOCKER_USER }}%2Faserra14-service%3A${{ inputs.image_tag }}`.
 
 ---
 
@@ -177,7 +183,7 @@ flowchart TD
 A continuación se presentan los espacios designados para las evidencias gráficas del correcto funcionamiento de cada componente de la plataforma:
 
 #### 1. Pipeline de CI/CD en GitHub Actions
-> Evidencia de la ejecución exitosa de los 3 jobs en GitHub Actions (`Quality`, `Docker Build & Push`, `Deploy to Render`).
+> Evidencia de la ejecución exitosa de los 4 jobs orquestados por CD en GitHub Actions (`Quality Gate / Quality`, `Semantic Versioning`, `Docker Build & Push`, `Deploy to Render`).
 ![GitHub Actions](assets/github_actions.png?raw=true "GitHub Actions")
 
 
