@@ -1,0 +1,44 @@
+name: CD Module - Semantic Versioning
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: "Versión SemVer limpia (ej. 1.0.1)"
+        value: ${{ jobs.semver.outputs.version }}
+      tag:
+        description: "Tag SemVer completo (ej. v1.0.1)"
+        value: ${{ jobs.semver.outputs.tag }}
+
+jobs:
+  semver:
+    name: Semantic Versioning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.tag_version.outputs.new_version || steps.tag_version.outputs.previous_version }}
+      tag: ${{ steps.tag_version.outputs.new_tag || steps.tag_version.outputs.previous_tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v7
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+          tag_prefix: v
+          initial_version: "1.0.0"
+          release_branches: main
+
+      - name: Create a GitHub release
+        if: steps.tag_version.outputs.new_tag != ''
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.tag_version.outputs.new_tag }}
+          name: Release ${{ steps.tag_version.outputs.new_tag }}
+          body: ${{ steps.tag_version.outputs.changelog }}

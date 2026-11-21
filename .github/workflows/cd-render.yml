@@ -1,0 +1,24 @@
+name: CD Module - Deploy to Render
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Tag SemVer de la imagen publicada en Docker Hub"
+        required: true
+        type: string
+    secrets:
+      DOCKER_USER:
+        required: true
+      RENDER_DEPLOY_HOOK_URL:
+        required: true
+
+jobs:
+  render:
+    name: Deploy to Render
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Render
+        env:
+          deploy_url: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}&imgURL=docker.io%2F${{ secrets.DOCKER_USER }}%2Faserra14-service%3A${{ inputs.image_tag }}
+        run: curl --fail-with-body "$deploy_url"
