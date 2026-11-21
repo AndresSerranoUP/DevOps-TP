@@ -1,0 +1,45 @@
+name: CD - Release & Deploy Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'assets/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality Gate
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  semver:
+    name: Semantic Versioning
+    needs: quality
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/cd-semver.yml
+    secrets: inherit
+
+  docker:
+    name: Docker Build & Push
+    needs: semver
+    uses: ./.github/workflows/cd-docker.yml
+    with:
+      image_tag: ${{ needs.semver.outputs.version }}
+    secrets: inherit
+
+  render:
+    name: Deploy to Render
+    needs: [semver, docker]
+    uses: ./.github/workflows/cd-render.yml
+    with:
+      image_tag: ${{ needs.semver.outputs.version }}
+    secrets: inherit
